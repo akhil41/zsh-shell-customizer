@@ -167,20 +167,50 @@ install_zsh() {
         return 0
     fi
 
-    if confirm "Zsh is not installed. Would you like to install it?"; then
+    info "Zsh is not installed on this system"
+
+    if confirm "Would you like to install Zsh?" "y"; then
+        # Check if sudo is needed for package installation
+        if [[ "$PACKAGE_MANAGER" != "brew" ]]; then
+            info "Zsh installation requires sudo privileges"
+            if ! confirm "Continue with sudo installation?" "y"; then
+                warning "Skipping Zsh installation - sudo access declined"
+                return 1
+            fi
+
+            # Test sudo access
+            if ! sudo -n true 2>/dev/null; then
+                info "Please enter your password for sudo access:"
+                if ! sudo -v; then
+                    error_exit "Sudo authentication failed. Cannot install Zsh."
+                fi
+            fi
+        fi
+
         install_package "zsh"
 
         # Set zsh as default shell
-        if confirm "Would you like to set Zsh as your default shell?"; then
+        if confirm "Would you like to set Zsh as your default shell?" "y"; then
             local zsh_path=$(which zsh)
-            if ! grep -q "$zsh_path" /etc/shells; then
-                echo "$zsh_path" | sudo tee -a /etc/shells
+            if ! grep -q "$zsh_path" /etc/shells 2>/dev/null; then
+                info "Adding Zsh to /etc/shells (requires sudo)"
+                if echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null; then
+                    success "Added Zsh to /etc/shells"
+                else
+                    warning "Failed to add Zsh to /etc/shells"
+                fi
             fi
-            chsh -s "$zsh_path"
-            success "Set Zsh as default shell"
+
+            if chsh -s "$zsh_path" 2>/dev/null; then
+                success "Set Zsh as default shell"
+            else
+                warning "Failed to set Zsh as default shell. You can run 'chsh -s $zsh_path' manually later."
+            fi
         fi
+
+        return 0
     else
-        warning "Skipping Zsh installation"
+        warning "Skipping Zsh installation - user declined"
         return 1
     fi
 }
