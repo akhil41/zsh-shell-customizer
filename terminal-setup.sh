@@ -244,19 +244,21 @@ install_oh_my_zsh() {
     info "Checking Oh My Zsh installation..."
 
     if [[ -d "$HOME/.oh-my-zsh" ]]; then
-        success "Oh My Zsh is already installed"
+        info "Oh My Zsh already installed, skipping installation"
         return 0
     fi
 
-    if confirm "Would you like to install Oh My Zsh?"; then
+    if confirm "Would you like to install Oh My Zsh?" "y"; then
         info "Installing Oh My Zsh..."
         backup_file "$HOME/.zshrc"
 
         # Download and install Oh My Zsh
         if sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended >> "$LOG_FILE" 2>&1; then
-            success "Installed Oh My Zsh"
+            success "Oh My Zsh installed successfully"
+            return 0
         else
-            error_exit "Failed to install Oh My Zsh"
+            warning "Oh My Zsh installation failed"
+            return 1
         fi
     else
         warning "Skipping Oh My Zsh installation"
@@ -528,7 +530,7 @@ main() {
     # Install components
     install_zsh || exit 1
     install_gruvbox_theme
-    install_oh_my_zsh || exit 1
+    install_oh_my_zsh
     install_hack_nerd_font
     install_powerlevel10k
     install_zsh_plugins
