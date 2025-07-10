@@ -261,7 +261,7 @@ install_oh_my_zsh() {
             return 1
         fi
     else
-        warning "Skipping Oh My Zsh installation"
+        warning "Skipping Oh My Zsh installation - user declined"
         return 1
     fi
 }
