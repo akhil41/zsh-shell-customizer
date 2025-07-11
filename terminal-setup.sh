@@ -203,6 +203,13 @@ install_zsh() {
 
             if chsh -s "$zsh_path" 2>/dev/null; then
                 success "Set Zsh as default shell"
+
+                # Switch to zsh if we're currently running in bash
+                if [[ "$0" == *"bash"* ]] || [[ "$SHELL" == *"bash"* ]]; then
+                    info "Switching to Zsh to continue setup..."
+                    export SHELL="$zsh_path"
+                    exec "$zsh_path" "$0" "$@"
+                fi
             else
                 warning "Failed to set Zsh as default shell. You can run 'chsh -s $zsh_path' manually later."
             fi
