@@ -268,7 +268,7 @@ install_oh_my_zsh() {
 
 # Install Hack Nerd Font
 install_hack_nerd_font() {
-    if confirm "Would you like to install Hack Nerd Font?"; then
+    if confirm "Would you like to install Hack Nerd Font?" "y"; then
         info "Installing Hack Nerd Font..."
 
         local font_url="https://github.com/ryanoasis/nerd-fonts/releases/download/v3.1.1/Hack.zip"
@@ -305,18 +305,24 @@ install_hack_nerd_font() {
             warning "Failed to download Hack Nerd Font"
         fi
     else
-        warning "Skipping Hack Nerd Font installation"
+        warning "Skipping Hack Nerd Font installation - user declined"
     fi
 }
 
 # Install Powerlevel10k
 install_powerlevel10k() {
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
-        warning "Oh My Zsh not found. Skipping Powerlevel10k installation."
-        return 1
+        warning "Oh My Zsh not found. Powerlevel10k requires Oh My Zsh to be installed first."
+        if confirm "Would you like to skip Powerlevel10k installation for now?" "n"; then
+            warning "Skipping Powerlevel10k installation - user chose to skip"
+            return 1
+        else
+            info "Please install Oh My Zsh first, then run this script again for Powerlevel10k"
+            return 1
+        fi
     fi
 
-    if confirm "Would you like to install Powerlevel10k theme?"; then
+    if confirm "Would you like to install Powerlevel10k theme?" "y"; then
         info "Installing Powerlevel10k..."
 
         local p10k_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
@@ -335,18 +341,24 @@ install_powerlevel10k() {
             info "You can run 'p10k configure' after restarting your terminal to configure Powerlevel10k"
         fi
     else
-        warning "Skipping Powerlevel10k installation"
+        warning "Skipping Powerlevel10k installation - user declined"
     fi
 }
 
 # Install Zsh plugins
 install_zsh_plugins() {
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
-        warning "Oh My Zsh not found. Skipping plugin installation."
-        return 1
+        warning "Oh My Zsh not found. Zsh plugins require Oh My Zsh to be installed first."
+        if confirm "Would you like to skip Zsh plugins installation for now?" "n"; then
+            warning "Skipping Zsh plugins installation - user chose to skip"
+            return 1
+        else
+            info "Please install Oh My Zsh first, then run this script again for plugins"
+            return 1
+        fi
     fi
 
-    if confirm "Would you like to install zsh-syntax-highlighting and zsh-autosuggestions plugins?"; then
+    if confirm "Would you like to install zsh-syntax-highlighting and zsh-autosuggestions plugins?" "y"; then
         info "Installing Zsh plugins..."
 
         local custom_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
@@ -385,7 +397,7 @@ install_zsh_plugins() {
 
         success "Installed Zsh plugins"
     else
-        warning "Skipping Zsh plugins installation"
+        warning "Skipping Zsh plugins installation - user declined"
     fi
 }
 
@@ -439,11 +451,17 @@ install_ruby_environment() {
 # Install colorls
 install_colorls() {
     if ! command_exists ruby; then
-        warning "Ruby not found. Skipping colorls installation."
-        return 1
+        warning "Ruby not found. Colorls requires Ruby to be installed first."
+        if confirm "Would you like to skip colorls installation for now?" "n"; then
+            warning "Skipping colorls installation - user chose to skip"
+            return 1
+        else
+            info "Please install Ruby first, then run this script again for colorls"
+            return 1
+        fi
     fi
 
-    if confirm "Would you like to install colorls gem and set up ls alias?"; then
+    if confirm "Would you like to install colorls gem and set up ls alias?" "y"; then
         info "Installing colorls gem..."
 
         if gem install colorls >> "$LOG_FILE" 2>&1; then
@@ -464,7 +482,7 @@ install_colorls() {
             warning "Failed to install colorls gem"
         fi
     else
-        warning "Skipping colorls installation"
+        warning "Skipping colorls installation - user declined"
     fi
 }
 
