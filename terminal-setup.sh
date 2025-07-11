@@ -17,6 +17,43 @@ LOG_FILE="$HOME/terminal-setup.log"
 BACKUP_DIR="$HOME/.terminal-setup-backups/$(date +%Y%m%d_%H%M%S)"
 OS_TYPE=""
 PACKAGE_MANAGER=""
+AUTO_CONFIRM=false
+
+# Parse command line arguments
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -y|--yes)
+                AUTO_CONFIRM=true
+                shift
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                warning "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# Show help message
+show_help() {
+    echo "Terminal Setup Script"
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  -y, --yes    Auto-confirm all installation prompts"
+    echo "  -h, --help   Show this help message"
+    echo ""
+    echo "Examples:"
+    echo "  $0           # Interactive mode with confirmation prompts"
+    echo "  $0 --yes     # Auto-confirm all installations"
+}
 
 # Logging function
 log() {
@@ -45,12 +82,17 @@ info() {
     log "${BLUE}ℹ $1${NC}"
 }
 
-
 # User confirmation
 confirm() {
     local message="$1"
     local default="${2:-n}"
     local prompt="[y/N]"
+
+    # Auto-confirm if flag is set
+    if [[ "$AUTO_CONFIRM" == "true" ]]; then
+        info "$message [AUTO-CONFIRMED]"
+        return 0
+    fi
 
     if [[ "$default" == "y" ]]; then
         prompt="[Y/n]"
@@ -269,8 +311,9 @@ install_zsh() {
     fi
 
     info "Zsh is not installed on this system"
+    info "Zsh will be installed as your default shell with Oh My Zsh framework support"
 
-    if confirm "Would you like to install Zsh?" "y"; then
+    if confirm "Would you like to install Zsh?"; then
         # Check if sudo is needed for package installation
         if [[ "$PACKAGE_MANAGER" != "brew" ]]; then
             info "Zsh installation requires sudo privileges"
@@ -291,7 +334,7 @@ install_zsh() {
         install_package "zsh"
 
         # Set zsh as default shell
-        if confirm "Would you like to set Zsh as your default shell?" "y"; then
+        if confirm "Would you like to set Zsh as your default shell?"; then
             local zsh_path=$(which zsh)
             info "Setting up Zsh as default shell..."
 
@@ -324,6 +367,8 @@ install_zsh() {
                 info "You can manually set it later with: chsh -s $zsh_path"
                 return 1
             fi
+        else
+            warning "Skipping default shell change - user declined"
         fi
 
         return 0
@@ -339,6 +384,7 @@ install_gruvbox_theme() {
         return 0
     fi
 
+    info "Gruvbox Dark theme provides a warm, retro color scheme for Terminal.app"
     if confirm "Would you like to install the Gruvbox Dark theme for Terminal.app?"; then
         info "Downloading Gruvbox theme..."
 
@@ -353,7 +399,7 @@ install_gruvbox_theme() {
             warning "Failed to download Gruvbox theme"
         fi
     else
-        warning "Skipping Gruvbox theme installation"
+        warning "Skipping Gruvbox theme installation - user declined"
     fi
 }
 
@@ -366,7 +412,8 @@ install_oh_my_zsh() {
         return 0
     fi
 
-    if confirm "Would you like to install Oh My Zsh?" "y"; then
+    info "Oh My Zsh is a framework for managing Zsh configuration with themes and plugins"
+    if confirm "Would you like to install Oh My Zsh?"; then
         info "Installing Oh My Zsh..."
         backup_file "$HOME/.zshrc"
 
@@ -396,7 +443,8 @@ install_oh_my_zsh() {
 
 # Install Hack Nerd Font
 install_hack_nerd_font() {
-    if confirm "Would you like to install Hack Nerd Font?" "y"; then
+    info "Hack Nerd Font provides programming ligatures and icons for your terminal (~14MB download)"
+    if confirm "Would you like to install Hack Nerd Font?"; then
         info "Installing Hack Nerd Font..."
 
         # Check if unzip is available
@@ -505,16 +553,11 @@ install_hack_nerd_font() {
 install_powerlevel10k() {
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
         warning "Oh My Zsh not found. Powerlevel10k requires Oh My Zsh to be installed first."
-        if confirm "Would you like to skip Powerlevel10k installation for now?" "n"; then
-            warning "Skipping Powerlevel10k installation - user chose to skip"
-            return 1
-        else
-            info "Please install Oh My Zsh first, then run this script again for Powerlevel10k"
-            return 1
-        fi
+        return 1
     fi
 
-    if confirm "Would you like to install Powerlevel10k theme?" "y"; then
+    info "Powerlevel10k is a fast and highly customizable Zsh theme with rich prompts"
+    if confirm "Would you like to install Powerlevel10k theme?"; then
         info "Installing Powerlevel10k..."
 
         local p10k_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
@@ -547,16 +590,11 @@ install_powerlevel10k() {
 install_zsh_plugins() {
     if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
         warning "Oh My Zsh not found. Zsh plugins require Oh My Zsh to be installed first."
-        if confirm "Would you like to skip Zsh plugins installation for now?" "n"; then
-            warning "Skipping Zsh plugins installation - user chose to skip"
-            return 1
-        else
-            info "Please install Oh My Zsh first, then run this script again for plugins"
-            return 1
-        fi
+        return 1
     fi
 
-    if confirm "Would you like to install zsh-syntax-highlighting and zsh-autosuggestions plugins?" "y"; then
+    info "Zsh plugins provide syntax highlighting and fish-like autosuggestions"
+    if confirm "Would you like to install zsh-syntax-highlighting and zsh-autosuggestions plugins?"; then
         info "Installing Zsh plugins..."
 
         local custom_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
@@ -614,6 +652,8 @@ install_ruby_environment() {
         return 0
     fi
 
+    info "Ruby environment with rbenv will be installed for colorls gem support"
+    info "This may take 10-30 minutes to compile Ruby from source"
     if confirm "Ruby is not installed. Would you like to install rbenv and Ruby?"; then
         info "Installing rbenv..."
 
@@ -647,7 +687,7 @@ install_ruby_environment() {
             error_exit "Could not determine latest Ruby version"
         fi
     else
-        warning "Skipping Ruby installation"
+        warning "Skipping Ruby installation - user declined"
         return 1
     fi
 }
@@ -656,16 +696,11 @@ install_ruby_environment() {
 install_colorls() {
     if ! command_exists ruby; then
         warning "Ruby not found. Colorls requires Ruby to be installed first."
-        if confirm "Would you like to skip colorls installation for now?" "n"; then
-            warning "Skipping colorls installation - user chose to skip"
-            return 1
-        else
-            info "Please install Ruby first, then run this script again for colorls"
-            return 1
-        fi
+        return 1
     fi
 
-    if confirm "Would you like to install colorls gem and set up ls alias?" "y"; then
+    info "Colorls provides a colorful and icon-rich replacement for the ls command"
+    if confirm "Would you like to install colorls gem and set up ls aliases?"; then
         info "Installing colorls gem..."
 
         if gem install colorls >> "$LOG_FILE" 2>&1; then
@@ -688,6 +723,43 @@ install_colorls() {
     else
         warning "Skipping colorls installation - user declined"
     fi
+}
+
+# Show installation plan
+show_installation_plan() {
+    echo ""
+    info "=== 📋 Installation Plan ==="
+    echo ""
+    info "The following components will be offered for installation:"
+    echo ""
+    echo "🔧 Core Components:"
+    echo "  • Zsh shell (if not already installed)"
+    echo "  • Oh My Zsh framework"
+    echo "  • Powerlevel10k theme"
+    echo "  • Zsh plugins (syntax highlighting & autosuggestions)"
+    echo ""
+    echo "🎨 Visual Enhancements:"
+    echo "  • Hack Nerd Font (~14MB download)"
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        echo "  • Gruvbox Dark terminal theme"
+    fi
+    echo ""
+    echo "💎 Ruby Environment:"
+    echo "  • rbenv and latest Ruby (if not installed)"
+    echo "  • colorls gem with ls aliases"
+    echo ""
+    echo "⚙️ Installation Features:"
+    echo "  • User confirmation for each component"
+    echo "  • Automatic backups of configuration files"
+    echo "  • Comprehensive logging and error handling"
+    echo "  • Safe to run multiple times"
+    echo ""
+    if [[ "$AUTO_CONFIRM" == "true" ]]; then
+        warning "AUTO-CONFIRM MODE: All prompts will be automatically accepted"
+    else
+        info "You will be prompted before installing each component"
+    fi
+    echo ""
 }
 
 # Main installation summary
@@ -807,53 +879,78 @@ show_post_installation_guide() {
 
 # Main function
 main() {
+    # Parse command line arguments
+    parse_arguments "$@"
+
     echo ""
     info "=== 🚀 Terminal Setup Script ==="
-    info "This script will help you set up a standardized terminal environment"
+    info "Standardizes terminal configuration across macOS and Linux"
     echo ""
 
-    info "Components that will be configured:"
-    echo "  ✓ Zsh shell with Oh My Zsh framework"
-    echo "  ✓ Powerlevel10k theme"
-    echo "  ✓ Syntax highlighting and autosuggestions"
-    echo "  ✓ Hack Nerd Font"
-    echo "  ✓ Ruby environment with colorls"
-    if [[ "$OS_TYPE" == "macos" ]]; then
-        echo "  ✓ Gruvbox terminal theme"
-    fi
-    echo ""
+    # Initialize
+    create_backup_dir
+    detect_os
+    show_installation_plan
 
     if ! confirm "Do you want to proceed with the installation?" "y"; then
         info "Installation cancelled by user"
         exit 0
     fi
 
-    # Initialize
-    create_backup_dir
-    detect_os
     check_sudo_requirements
 
-    # Install components with verification
+    # Install components with user confirmation
     info "Starting installation process..."
+    echo ""
 
+    local step=1
+    local total_steps=8
+
+    info "[$step/$total_steps] Zsh Shell Installation"
     if install_zsh; then
         verify_zsh_installation || warning "Zsh verification failed but continuing..."
     else
         error_exit "Zsh installation failed - cannot continue"
     fi
+    ((step++))
 
+    echo ""
+    info "[$step/$total_steps] Terminal Theme Installation"
     install_gruvbox_theme
+    ((step++))
+
+    echo ""
+    info "[$step/$total_steps] Oh My Zsh Framework Installation"
     install_oh_my_zsh
+    ((step++))
+
+    echo ""
+    info "[$step/$total_steps] Hack Nerd Font Installation"
     install_hack_nerd_font
+    ((step++))
+
+    echo ""
+    info "[$step/$total_steps] Powerlevel10k Theme Installation"
     install_powerlevel10k
+    ((step++))
+
+    echo ""
+    info "[$step/$total_steps] Zsh Plugins Installation"
     install_zsh_plugins
+    ((step++))
+
+    echo ""
+    info "[$step/$total_steps] Ruby Environment Installation"
     install_ruby_environment
+    ((step++))
+
+    echo ""
+    info "[$step/$total_steps] Colorls Installation"
     install_colorls
 
     # Show summary and guide
     show_summary
     show_post_installation_guide
-
 }
 
 # Handle script interruption
