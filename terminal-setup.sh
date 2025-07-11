@@ -271,38 +271,102 @@ install_hack_nerd_font() {
     if confirm "Would you like to install Hack Nerd Font?" "y"; then
         info "Installing Hack Nerd Font..."
 
+        # Check if unzip is available
+        if ! command_exists unzip; then
+            if [[ "$PACKAGE_MANAGER" == "apt" ]]; then
+                info "Installing unzip package..."
+                if ! install_package "unzip"; then
+                    warning "Failed to install unzip. Cannot extract font archive."
+                    return 1
+                fi
+            else
+                warning "unzip command not found. Please install unzip and try again."
+                return 1
+            fi
+        fi
+
         local font_url="https://github.com/ryanoasis/nerd-fonts/releases/download/v3.1.1/Hack.zip"
         local temp_dir=$(mktemp -d)
         local font_zip="$temp_dir/Hack.zip"
 
-        # Download font
-        if curl -L "$font_url" -o "$font_zip" >> "$LOG_FILE" 2>&1; then
+        info "Downloading font from $font_url..."
+        # Download font with better error handling
+        if curl -L --fail --connect-timeout 30 --max-time 300 "$font_url" -o "$font_zip" >> "$LOG_FILE" 2>&1; then
+            # Validate downloaded file
+            if [[ ! -f "$font_zip" ]]; then
+                warning "Downloaded font file not found"
+                rm -rf "$temp_dir"
+                return 1
+            fi
+
+            # Check if file is actually a zip file
+            if ! file "$font_zip" | grep -q "Zip archive"; then
+                warning "Downloaded file is not a valid zip archive"
+                log "File type: $(file "$font_zip")"
+                rm -rf "$temp_dir"
+                return 1
+            fi
+
+            local file_size=$(stat -c%s "$font_zip" 2>/dev/null || stat -f%z "$font_zip" 2>/dev/null || echo "0")
+            if [[ "$file_size" -lt 1000000 ]]; then  # Less than 1MB seems too small
+                warning "Downloaded font file appears to be too small ($file_size bytes)"
+                rm -rf "$temp_dir"
+                return 1
+            fi
+
+            success "Font downloaded successfully ($file_size bytes)"
+
             cd "$temp_dir"
+            info "Extracting font archive..."
             if unzip -q "$font_zip" >> "$LOG_FILE" 2>&1; then
+                # Verify extraction worked
+                local ttf_count=$(find . -name "*.ttf" | wc -l)
+                if [[ "$ttf_count" -eq 0 ]]; then
+                    warning "No TTF font files found after extraction"
+                    rm -rf "$temp_dir"
+                    return 1
+                fi
+
+                info "Found $ttf_count font files"
+
                 if [[ "$OS_TYPE" == "macos" ]]; then
                     local font_dir="$HOME/Library/Fonts"
                     mkdir -p "$font_dir"
-                    if cp *.ttf "$font_dir/" 2>/dev/null; then
-                        success "Installed Hack Nerd Font"
+                    if find . -name "*.ttf" -exec cp {} "$font_dir/" \; 2>/dev/null; then
+                        success "Installed Hack Nerd Font to $font_dir"
                     else
-                        warning "Failed to copy font files"
+                        warning "Failed to copy font files to $font_dir"
+                        rm -rf "$temp_dir"
+                        return 1
                     fi
                 else
                     local font_dir="$HOME/.local/share/fonts"
                     mkdir -p "$font_dir"
-                    if cp *.ttf "$font_dir/" 2>/dev/null; then
-                        fc-cache -fv >> "$LOG_FILE" 2>&1
-                        success "Installed Hack Nerd Font"
+                    if find . -name "*.ttf" -exec cp {} "$font_dir/" \; 2>/dev/null; then
+                        info "Refreshing font cache..."
+                        if fc-cache -fv >> "$LOG_FILE" 2>&1; then
+                            success "Installed Hack Nerd Font to $font_dir"
+                        else
+                            warning "Font files copied but font cache refresh failed"
+                        fi
                     else
-                        warning "Failed to copy font files"
+                        warning "Failed to copy font files to $font_dir"
+                        rm -rf "$temp_dir"
+                        return 1
                     fi
                 fi
             else
                 warning "Failed to extract font archive"
+                log "Extraction error details logged to $LOG_FILE"
+                rm -rf "$temp_dir"
+                return 1
             fi
             rm -rf "$temp_dir"
         else
             warning "Failed to download Hack Nerd Font"
+            log "Download error details logged to $LOG_FILE"
+            rm -rf "$temp_dir"
+            return 1
         fi
     else
         warning "Skipping Hack Nerd Font installation - user declined"
