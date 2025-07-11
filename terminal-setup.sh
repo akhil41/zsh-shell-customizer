@@ -158,6 +158,107 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Verification functions
+verify_zsh_installation() {
+    if command_exists zsh && [[ "$SHELL" == *"zsh"* ]]; then
+        success "Zsh installation verified"
+        return 0
+    else
+        warning "Zsh installation verification failed"
+        return 1
+    fi
+}
+
+verify_oh_my_zsh_installation() {
+    if [[ -d "$HOME/.oh-my-zsh" ]] && [[ -f "$HOME/.zshrc" ]]; then
+        success "Oh My Zsh installation verified"
+        return 0
+    else
+        warning "Oh My Zsh installation verification failed"
+        return 1
+    fi
+}
+
+verify_powerlevel10k_installation() {
+    local p10k_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k"
+    if [[ -d "$p10k_dir" ]] && grep -q "powerlevel10k" "$HOME/.zshrc" 2>/dev/null; then
+        success "Powerlevel10k installation verified"
+        return 0
+    else
+        warning "Powerlevel10k installation verification failed"
+        return 1
+    fi
+}
+
+verify_plugins_installation() {
+    local custom_dir="${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}"
+    if [[ -d "$custom_dir/plugins/zsh-syntax-highlighting" ]] && [[ -d "$custom_dir/plugins/zsh-autosuggestions" ]]; then
+        success "Zsh plugins installation verified"
+        return 0
+    else
+        warning "Zsh plugins installation verification failed"
+        return 1
+    fi
+}
+
+# Rollback function
+rollback_installation() {
+    local component="$1"
+    warning "Rolling back $component installation..."
+
+    case "$component" in
+        "zsh")
+            if [[ -f "$BACKUP_DIR/zshrc.backup" ]]; then
+                cp "$BACKUP_DIR/zshrc.backup" "$HOME/.zshrc"
+                info "Restored .zshrc from backup"
+            fi
+            ;;
+        "oh-my-zsh")
+            if [[ -d "$HOME/.oh-my-zsh" ]]; then
+                rm -rf "$HOME/.oh-my-zsh"
+                info "Removed Oh My Zsh directory"
+            fi
+            if [[ -f "$BACKUP_DIR/zshrc.backup" ]]; then
+                cp "$BACKUP_DIR/zshrc.backup" "$HOME/.zshrc"
+                info "Restored .zshrc from backup"
+            fi
+            ;;
+    esac
+}
+
+# Check sudo requirements upfront
+check_sudo_requirements() {
+    info "Checking system requirements..."
+
+    local needs_sudo=false
+
+    if [[ "$PACKAGE_MANAGER" != "brew" ]]; then
+        needs_sudo=true
+    fi
+
+    if [[ "$needs_sudo" == "true" ]]; then
+        info "This script requires sudo privileges for:"
+        echo "  • Installing system packages (zsh, unzip)"
+        echo "  • Modifying /etc/shells"
+        echo "  • Changing default shell"
+        echo ""
+
+        if ! confirm "Do you want to proceed with sudo requirements?" "y"; then
+            error_exit "Script cancelled - sudo privileges required"
+        fi
+
+        # Test sudo access early
+        if ! sudo -n true 2>/dev/null; then
+            info "Please enter your password for sudo access:"
+            if ! sudo -v; then
+                error_exit "Sudo authentication failed"
+            fi
+        fi
+
+        success "Sudo access confirmed"
+    fi
+}
+
 # Install Zsh
 install_zsh() {
     info "Checking Zsh installation..."
@@ -192,26 +293,36 @@ install_zsh() {
         # Set zsh as default shell
         if confirm "Would you like to set Zsh as your default shell?" "y"; then
             local zsh_path=$(which zsh)
+            info "Setting up Zsh as default shell..."
+
             if ! grep -q "$zsh_path" /etc/shells 2>/dev/null; then
                 info "Adding Zsh to /etc/shells (requires sudo)"
                 if echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null; then
                     success "Added Zsh to /etc/shells"
                 else
                     warning "Failed to add Zsh to /etc/shells"
+                    return 1
                 fi
             fi
 
             if chsh -s "$zsh_path" 2>/dev/null; then
                 success "Set Zsh as default shell"
 
-                # Switch to zsh if we're currently running in bash
-                if [[ "$0" == *"bash"* ]] || [[ "$SHELL" == *"bash"* ]]; then
-                    info "Switching to Zsh to continue setup..."
+                # Verify shell change
+                if [[ "$SHELL" != "$zsh_path" ]]; then
                     export SHELL="$zsh_path"
+                fi
+
+                # Switch to zsh if we're currently running in bash
+                if [[ "$0" == *"bash"* ]] || [[ "$(ps -p $$ -o comm=)" == *"bash"* ]]; then
+                    info "Switching to Zsh to continue setup..."
+                    info "Remaining setup will continue in Zsh environment"
                     exec "$zsh_path" "$0" "$@"
                 fi
             else
-                warning "Failed to set Zsh as default shell. You can run 'chsh -s $zsh_path' manually later."
+                warning "Failed to set Zsh as default shell"
+                info "You can manually set it later with: chsh -s $zsh_path"
+                return 1
             fi
         fi
 
@@ -262,7 +373,17 @@ install_oh_my_zsh() {
         # Download and install Oh My Zsh
         if sh -c "$(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended >> "$LOG_FILE" 2>&1; then
             success "Oh My Zsh installed successfully"
-            return 0
+
+            # Verify installation
+            if verify_oh_my_zsh_installation; then
+                return 0
+            else
+                warning "Oh My Zsh installation verification failed"
+                if confirm "Would you like to rollback this installation?"; then
+                    rollback_installation "oh-my-zsh"
+                fi
+                return 1
+            fi
         else
             warning "Oh My Zsh installation failed"
             return 1
@@ -408,8 +529,14 @@ install_powerlevel10k() {
 
         success "Installed Powerlevel10k theme"
 
-        if confirm "Would you like to run the Powerlevel10k configuration wizard now?"; then
-            info "You can run 'p10k configure' after restarting your terminal to configure Powerlevel10k"
+        # Verify installation
+        if verify_powerlevel10k_installation; then
+            if confirm "Would you like to configure Powerlevel10k now?" "n"; then
+                info "Run 'p10k configure' after restarting your terminal to configure Powerlevel10k"
+            fi
+        else
+            warning "Powerlevel10k installation verification failed"
+            return 1
         fi
     else
         warning "Skipping Powerlevel10k installation - user declined"
@@ -467,6 +594,12 @@ install_zsh_plugins() {
         fi
 
         success "Installed Zsh plugins"
+
+        # Verify installation
+        if ! verify_plugins_installation; then
+            warning "Plugin installation verification failed"
+            return 1
+        fi
     else
         warning "Skipping Zsh plugins installation - user declined"
     fi
@@ -605,19 +738,110 @@ show_summary() {
     fi
 }
 
+# Post-installation guide
+show_post_installation_guide() {
+    echo ""
+    info "=== 🎉 Installation Complete! ==="
+    echo ""
+
+    info "📋 Next Steps:"
+    echo ""
+
+    echo "1. 🔄 Restart your terminal or run:"
+    echo "   source ~/.zshrc"
+    echo ""
+
+    if [[ -d "${ZSH_CUSTOM:-$HOME/.oh-my-zsh/custom}/themes/powerlevel10k" ]]; then
+        echo "2. 🎨 Configure Powerlevel10k theme:"
+        echo "   p10k configure"
+        echo ""
+        echo "   This will launch an interactive wizard to customize your prompt."
+        echo "   You can re-run this anytime to change your theme."
+        echo ""
+    fi
+
+    if command_exists colorls; then
+        echo "3. 🌈 Test colorls:"
+        echo "   ls"
+        echo "   ll"
+        echo "   la"
+        echo ""
+    fi
+
+    echo "4. 🔧 Additional Configuration:"
+    echo "   • Edit ~/.zshrc to customize your shell"
+    echo "   • Add custom aliases and functions"
+    echo "   • Install additional Oh My Zsh plugins"
+    echo ""
+
+    info "📚 Useful Commands:"
+    echo "   • omz update          - Update Oh My Zsh"
+    echo "   • omz plugin list     - List available plugins"
+    echo "   • omz theme list      - List available themes"
+    echo "   • p10k configure      - Reconfigure Powerlevel10k"
+    echo ""
+
+    info "🔍 Troubleshooting:"
+    echo "   • If fonts look wrong: Install Hack Nerd Font in your terminal"
+    echo "   • If colors are off: Check terminal color scheme settings"
+    echo "   • If plugins don't work: Run 'source ~/.zshrc'"
+    echo ""
+
+    info "📁 Files and Locations:"
+    echo "   • Configuration: ~/.zshrc"
+    echo "   • Oh My Zsh: ~/.oh-my-zsh/"
+    echo "   • Backups: $BACKUP_DIR"
+    echo "   • Logs: $LOG_FILE"
+    echo ""
+
+    if [[ "$OS_TYPE" == "macos" ]] && [[ -f "$HOME/Downloads/Gruvbox-Dark.terminal" ]]; then
+        echo "5. 🎨 Terminal Theme (macOS):"
+        echo "   • Open Terminal preferences"
+        echo "   • Import Gruvbox-Dark.terminal from Downloads"
+        echo "   • Set as default profile"
+        echo ""
+    fi
+
+    success "Your terminal is now ready! Enjoy your enhanced shell experience! 🚀"
+}
+
 # Main function
 main() {
     echo ""
-    info "=== Terminal Setup Script ==="
+    info "=== 🚀 Terminal Setup Script ==="
     info "This script will help you set up a standardized terminal environment"
     echo ""
+
+    info "Components that will be configured:"
+    echo "  ✓ Zsh shell with Oh My Zsh framework"
+    echo "  ✓ Powerlevel10k theme"
+    echo "  ✓ Syntax highlighting and autosuggestions"
+    echo "  ✓ Hack Nerd Font"
+    echo "  ✓ Ruby environment with colorls"
+    if [[ "$OS_TYPE" == "macos" ]]; then
+        echo "  ✓ Gruvbox terminal theme"
+    fi
+    echo ""
+
+    if ! confirm "Do you want to proceed with the installation?" "y"; then
+        info "Installation cancelled by user"
+        exit 0
+    fi
 
     # Initialize
     create_backup_dir
     detect_os
+    check_sudo_requirements
 
-    # Install components
-    install_zsh || exit 1
+    # Install components with verification
+    info "Starting installation process..."
+
+    if install_zsh; then
+        verify_zsh_installation || warning "Zsh verification failed but continuing..."
+    else
+        error_exit "Zsh installation failed - cannot continue"
+    fi
+
     install_gruvbox_theme
     install_oh_my_zsh
     install_hack_nerd_font
@@ -626,10 +850,10 @@ main() {
     install_ruby_environment
     install_colorls
 
-    # Show summary
+    # Show summary and guide
     show_summary
+    show_post_installation_guide
 
-    success "Terminal setup completed!"
 }
 
 # Handle script interruption
